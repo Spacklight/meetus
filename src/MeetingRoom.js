@@ -1,54 +1,63 @@
 export class MeetingRoom {
-  constructor(state, env) {
-    this.state = state;
-    this.sockets = []; // Will hold up to 3 students
+  constructor(ctx, env) {
+    this.ctx = ctx; // 'state' is now 'ctx' for hibernatable websockets
+    this.env = env;
+    this.sockets = [];
   }
 
   async fetch(request) {
     // 1. Host creates the room
     if (request.method === "POST") {
-      await this.state.storage.put("active", true);
+      await this.ctx.storage.put("active", true);
       return new Response("Room created");
     }
     
     // 2. Joiner checks if room exists
     if (request.method === "GET") {
-      const isActive = await this.state.storage.get("active");
+      const isActive = await this.ctx.storage.get("active");
       if (isActive) return new Response("Room exists");
       return new Response("Not found", { status: 404 });
     }
 
-    // 3. Users connect via WebSocket for video signaling
+    // 3. Users connect via WebSocket
     if (request.headers.get("Upgrade") === "websocket") {
-      // Enforce the 3-student limit
+      // Enforce 3-student limit
       if (this.sockets.length >= 3) {
-        return new Response("Room is full (max 3 students)", { status: 403 });
+        return new Response("Room is full", { status: 403 });
       }
       
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       
-      // Accept the connection
-      server.accept();
+      // Track the socket
       this.sockets.push(server);
       
-      // When a user sends a message, broadcast it to the OTHER users
-      server.addEventListener("message", (event) => {
-        this.sockets.forEach(s => {
-          if (s !== server && s.readyState === 1) { // 1 = OPEN
-            s.send(event.data);
-          }
-        });
-      });
-
-      // Remove user when they leave
-      server.addEventListener("close", () => {
-        this.sockets = this.sockets.filter(s => s !== server);
-      });
+      // Use the modern Hibernatable WebSocket accept method
+      this.ctx.acceptWebSocket(server);
 
       return new Response(null, { status: 101, webSocket: client });
     }
     
     return new Response("Method not allowed", { status: 405 });
+  }
+
+  // Triggered automatically when a user sends a message
+  async webSocketMessage(ws, message) {
+    this.sockets.forEach(s => {
+      // Send the message to everyone EXCEPT the person who sent it
+      if (s !== ws) {
+        s.send(message);
+      }
+    });
+  }
+
+  // Triggered automatically when a user closes the tab
+  async webSocketClose(ws) {
+    this.sockets = this.sockets.filter(s => s !== ws);
+  }
+
+  // Triggered automatically on connection error
+  async webSocketError(ws, error) {
+    this.sockets = this.sockets.filter(s => s !== ws);
   }
 }
