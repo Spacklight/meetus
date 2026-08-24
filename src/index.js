@@ -5,7 +5,6 @@ export default {
     const url = new URL(request.url);
 
     // --- BACKEND API ROUTES ---
-    // If the user is checking/creating a room, talk to the Durable Object
     if (url.pathname.startsWith("/api/room/")) {
       const meetingId = url.pathname.split("/api/room/")[1];
       const id = env.MEETING_ROOM.idFromName(meetingId);
@@ -153,4 +152,6 @@ export default {
     });
   },
 };
+
+// This exports the Durable Object for Cloudflare to use
 export { MeetingRoom };
