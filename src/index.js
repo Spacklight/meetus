@@ -21,9 +21,9 @@ export default {
       <style>
         body {
           font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-          background-color: #212121; /* Dark mode looks better for video */
+          background-color: #212121; color: white;
           display: flex; justify-content: center; align-items: center;
-          height: 100vh; margin: 0; color: white;
+          height: 100vh; margin: 0;
         }
         .container {
           background: #2d2d2d; padding: 20px; border-radius: 12px;
@@ -47,10 +47,6 @@ export default {
           margin: 20px 0; font-size: 28px; font-weight: bold;
           letter-spacing: 5px; color: white;
         }
-        video {
-          width: 100%; height: 180px; border-radius: 8px;
-          margin-bottom: 10px; background: #000; object-fit: cover;
-        }
         .status-text { font-size: 12px; color: #4da3ff; font-weight: bold; margin-bottom: 10px; }
         input {
           width: 100%; padding: 15px; font-size: 18px; border: 2px solid #444;
@@ -60,13 +56,24 @@ export default {
         }
         input:focus { border-color: #1a73e8; }
         .error-msg { color: #ff4d4d; font-size: 14px; margin-top: -10px; margin-bottom: 15px; display: none; }
+        
+        /* Chat UI Styles */
+        #chat-container {
+          text-align: left; height: 200px; overflow-y: auto; 
+          background: #1a1a1a; padding: 10px; border-radius: 8px; 
+          margin-bottom: 10px; font-size: 14px; border: 1px solid #444;
+        }
+        .chat-msg { margin-bottom: 8px; word-wrap: break-word; }
+        .chat-them { color: #4da3ff; }
+        .chat-you { color: #34a853; text-align: right; }
+        #chat-input { text-align: left; letter-spacing: normal; font-size: 14px; padding: 10px; margin: 0;}
       </style>
     </head>
     <body>
       
       <div class="container" id="main-menu">
         <h1>MeetUs</h1>
-        <p>Connect with up to 3 students securely.</p>
+        <p>Test connection via text chat.</p>
         <div class="btn-group">
           <button class="btn-host" onclick="handleHost()">Host a Meeting</button>
           <button class="btn-join" onclick="showJoinUI()">Join a Meeting</button>
@@ -76,12 +83,20 @@ export default {
       <div class="container" id="waiting-room">
         <h1 id="room-title">Hosting...</h1>
         <p id="room-subtitle">Share this Meeting ID:</p>
-        <div class="meeting-id-box" id="host-id">---</div>
-        <button class="btn-host" style="margin-bottom: 10px;" onclick="copyId()">Copy Meeting ID</button>
+        
+        <div id="host-controls">
+          <div class="meeting-id-box" id="host-id">---</div>
+          <button class="btn-host" style="margin-bottom: 20px;" onclick="copyId()">Copy Meeting ID</button>
+        </div>
+
         <div class="status-text" id="ws-status">Connecting...</div>
         
-        <video id="remote-video" autoplay playsinline></video>
-        <video id="local-video" autoplay muted playsinline></video>
+        <!-- TEXT CHAT AREA -->
+        <div id="chat-container"></div>
+        <div style="display: flex; gap: 10px;">
+          <input type="text" id="chat-input" placeholder="Type a message...">
+          <button class="btn-host" style="width: 80px; padding: 0 15px;" onclick="sendChat()">Send</button>
+        </div>
       </div>
 
       <div class="container" id="join-room">
@@ -95,89 +110,45 @@ export default {
 
       <script>
         let currentMeetingId = null;
-        let localStream;
         let ws;
-        let peerConnection;
         let isJoiner = false;
-
-        const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
         function generateId() { return Math.floor(100000 + Math.random() * 900000); }
 
-        async function startLocalVideo() {
-          try {
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            document.getElementById('local-video').srcObject = localStream;
-          } catch (error) { alert("Camera/Mic permission denied."); }
-        }
-
-        // --- WEBRTC MAGIC ---
-        function createPeerConnection() {
-          peerConnection = new RTCPeerConnection(config);
-          
-          // Add your local video/audio tracks to the connection
-          localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
-          });
-
-          // When the OTHER user's video arrives, show it
-          peerConnection.ontrack = (event) => {
-            document.getElementById('remote-video').srcObject = event.streams[0];
-          };
-
-          // Find network paths and send them to the other user
-          peerConnection.onicecandidate = (event) => {
-            if (event.candidate) {
-              ws.send(JSON.stringify({ type: 'ice-candidate', candidate: event.candidate }));
-            }
-          };
-        }
-
-        async function initiateCall() {
-          await startLocalVideo();
-          createPeerConnection();
-          const offer = await peerConnection.createOffer();
-          await peerConnection.setLocalDescription(offer);
-          ws.send(JSON.stringify({ type: 'offer', offer: offer }));
-        }
-
-        // --- WEBSOCKET & SIGNALING ---
         function connectSignalingServer(meetingId) {
           const wsUrl = "wss://" + window.location.host + "/api/room/" + meetingId;
           ws = new WebSocket(wsUrl);
           
           ws.onopen = () => {
-            document.getElementById('ws-status').innerText = "Connected! Linking video...";
-            // If you are the joiner, start the WebRTC handshake
-            if (isJoiner) initiateCall();
+            document.getElementById('ws-status').innerText = "Connected! You can chat now.";
+            document.getElementById('ws-status').style.color = "#34a853";
           };
           
           ws.onmessage = async (event) => {
             const msg = JSON.parse(event.data);
-
-            if (msg.type === 'offer') {
-              // HOST receives offer from JOINER
-              if (!localStream) await startLocalVideo();
-              createPeerConnection();
-              await peerConnection.setRemoteDescription(msg.offer);
-              const answer = await peerConnection.createAnswer();
-              await peerConnection.setLocalDescription(answer);
-              ws.send(JSON.stringify({ type: 'answer', answer: answer }));
-            } 
-            else if (msg.type === 'answer') {
-              // JOINER receives answer from HOST
-              await peerConnection.setRemoteDescription(msg.answer);
-            } 
-            else if (msg.type === 'ice-candidate') {
-              // Both users exchange network paths
-              if (peerConnection) {
-                await peerConnection.addIceCandidate(msg.candidate);
-              }
+            
+            // Only handle text chat for now
+            if (msg.type === 'chat') {
+              const chatBox = document.getElementById('chat-container');
+              chatBox.innerHTML += '<div class="chat-msg chat-them">Them: ' + msg.text + '</div>';
+              chatBox.scrollTop = chatBox.scrollHeight; // Auto-scroll to bottom
             }
           };
         }
 
-        // --- UI LOGIC ---
+        function sendChat() {
+          const input = document.getElementById('chat-input');
+          if (!input.value || !ws) return;
+          
+          const chatBox = document.getElementById('chat-container');
+          chatBox.innerHTML += '<div class="chat-msg chat-you">You: ' + input.value + '</div>';
+          chatBox.scrollTop = chatBox.scrollHeight;
+          
+          // Send message to the other user via WebSocket
+          ws.send(JSON.stringify({ type: 'chat', text: input.value }));
+          input.value = '';
+        }
+
         async function handleHost() {
           currentMeetingId = generateId();
           document.getElementById('host-id').innerText = currentMeetingId;
@@ -208,14 +179,13 @@ export default {
           if (response.ok) {
             errorDiv.style.display = 'none';
             currentMeetingId = enteredId;
-            isJoiner = true; // Mark as joiner for WebSocket trigger
+            isJoiner = true;
             
             document.getElementById('join-room').style.display = 'none';
             document.getElementById('waiting-room').style.display = 'block';
-            document.getElementById('room-title').innerText = "Joining...";
-            document.getElementById('room-subtitle').innerText = "Connecting to host.";
-            document.getElementById('host-id').style.display = 'none';
-            document.querySelector('.btn-host').style.display = 'none'; // Hide copy button
+            document.getElementById('room-title').innerText = "In Meeting";
+            document.getElementById('room-subtitle').style.display = 'none';
+            document.getElementById('host-controls').style.display = 'none';
             
             connectSignalingServer(currentMeetingId);
           } else {
