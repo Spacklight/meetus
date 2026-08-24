@@ -2,4 +2,12 @@ name = "meetus"
 main = "src/index.js"
 compatibility_date = "2024-02-20"
 
-# We will add our Meeting Room (Durable Objects) settings here later!
+# Tell Cloudflare we are using Durable Objects
+[[durable_objects.bindings]]
+name = "MEETING_ROOM"
+class_name = "MeetingRoom"
+
+# Create the database table for the rooms
+[[migrations]]
+tag = "v1"
+new_classes = ["MeetingRoom"]
