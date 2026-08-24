@@ -47,7 +47,11 @@ export default {
           margin: 20px 0; font-size: 28px; font-weight: bold;
           letter-spacing: 5px; color: white;
         }
-        .status-text { font-size: 12px; color: #4da3ff; font-weight: bold; margin-bottom: 10px; }
+        .status-text { 
+          font-size: 12px; font-weight: bold; margin-bottom: 10px; 
+          background: #1a1a1a; padding: 8px; border-radius: 5px;
+          word-wrap: break-word;
+        }
         input {
           width: 100%; padding: 15px; font-size: 18px; border: 2px solid #444;
           border-radius: 8px; text-align: center; letter-spacing: 3px;
@@ -57,7 +61,6 @@ export default {
         input:focus { border-color: #1a73e8; }
         .error-msg { color: #ff4d4d; font-size: 14px; margin-top: -10px; margin-bottom: 15px; display: none; }
         
-        /* Chat UI Styles */
         #chat-container {
           text-align: left; height: 200px; overflow-y: auto; 
           background: #1a1a1a; padding: 10px; border-radius: 8px; 
@@ -89,9 +92,9 @@ export default {
           <button class="btn-host" style="margin-bottom: 20px;" onclick="copyId()">Copy Meeting ID</button>
         </div>
 
-        <div class="status-text" id="ws-status">Connecting...</div>
+        <!-- This will now show us exactly what is happening -->
+        <div class="status-text" id="ws-status" style="color: #ff4d4d;">Starting...</div>
         
-        <!-- TEXT CHAT AREA -->
         <div id="chat-container"></div>
         <div style="display: flex; gap: 10px;">
           <input type="text" id="chat-input" placeholder="Type a message...">
@@ -117,22 +120,37 @@ export default {
 
         function connectSignalingServer(meetingId) {
           const wsUrl = "wss://" + window.location.host + "/api/room/" + meetingId;
+          const statusEl = document.getElementById('ws-status');
+          
+          statusEl.innerText = "Connecting to: " + wsUrl;
+          statusEl.style.color = "#ffaa00";
+          
           ws = new WebSocket(wsUrl);
           
           ws.onopen = () => {
-            document.getElementById('ws-status').innerText = "Connected! You can chat now.";
-            document.getElementById('ws-status').style.color = "#34a853";
+            statusEl.innerText = "CONNECTED! You can chat now.";
+            statusEl.style.color = "#34a853";
+            // REMOVED the broken initiateCall() command here
           };
           
           ws.onmessage = async (event) => {
             const msg = JSON.parse(event.data);
-            
-            // Only handle text chat for now
             if (msg.type === 'chat') {
               const chatBox = document.getElementById('chat-container');
               chatBox.innerHTML += '<div class="chat-msg chat-them">Them: ' + msg.text + '</div>';
-              chatBox.scrollTop = chatBox.scrollHeight; // Auto-scroll to bottom
+              chatBox.scrollTop = chatBox.scrollHeight;
             }
+          };
+
+          // Make invisible errors visible on the screen
+          ws.onerror = (error) => {
+            statusEl.innerText = "WEBSOCKET ERROR! Check console.";
+            statusEl.style.color = "#ff4d4d";
+          };
+
+          ws.onclose = (event) => {
+            statusEl.innerText = "CLOSED. Code: " + event.code + " Reason: " + event.reason;
+            statusEl.style.color = "#ff4d4d";
           };
         }
 
@@ -144,7 +162,6 @@ export default {
           chatBox.innerHTML += '<div class="chat-msg chat-you">You: ' + input.value + '</div>';
           chatBox.scrollTop = chatBox.scrollHeight;
           
-          // Send message to the other user via WebSocket
           ws.send(JSON.stringify({ type: 'chat', text: input.value }));
           input.value = '';
         }
