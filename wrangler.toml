@@ -1,0 +1,5 @@
+name = "meetus"
+main = "src/index.js"
+compatibility_date = "2024-02-20"
+
+# We will add our Meeting Room (Durable Objects) settings here later!
