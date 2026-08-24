@@ -47,11 +47,11 @@ export default {
           margin: 20px 0; font-size: 24px; font-weight: bold;
           letter-spacing: 3px; color: #1a73e8;
         }
-        /* Video styling */
         #local-video {
           width: 100%; height: 200px; border-radius: 8px;
           margin-bottom: 20px; background: #000; object-fit: cover;
         }
+        .status-text { font-size: 12px; color: #34a853; font-weight: bold; margin-bottom: 10px; }
         input {
           width: 100%; padding: 15px; font-size: 18px; border: 2px solid #e0e0e0;
           border-radius: 8px; text-align: center; letter-spacing: 3px;
@@ -77,8 +77,7 @@ export default {
         <p>Share this Meeting ID:</p>
         <div class="meeting-id-box" id="host-id">---</div>
         <button class="btn-host" style="margin-bottom: 20px;" onclick="copyId()">Copy Meeting ID</button>
-        
-        <!-- This will now show the live camera feed -->
+        <div class="status-text" id="ws-status">Connecting to server...</div>
         <video id="local-video" autoplay muted playsinline></video>
         <p style="font-size: 12px; color: #888;">Waiting for others to join...</p>
       </div>
@@ -94,7 +93,8 @@ export default {
 
       <script>
         let currentMeetingId = null;
-        let localStream; // Will hold the camera/mic data
+        let localStream;
+        let ws; // WebSocket variable
 
         function generateId() {
           return Math.floor(100000 + Math.random() * 900000);
@@ -102,14 +102,31 @@ export default {
 
         async function startLocalVideo() {
           try {
-            // Ask the user for camera and microphone permissions
             localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            const videoElement = document.getElementById('local-video');
-            videoElement.srcObject = localStream;
+            document.getElementById('local-video').srcObject = localStream;
           } catch (error) {
             alert("Could not access camera/microphone. Please allow permissions.");
-            console.error("Error accessing media devices.", error);
           }
+        }
+
+        // Open the WebSocket tunnel to Cloudflare
+        function connectSignalingServer(meetingId) {
+          const wsUrl = "wss://" + window.location.host + "/api/room/" + meetingId;
+          ws = new WebSocket(wsUrl);
+          
+          ws.onopen = () => {
+            document.getElementById('ws-status').innerText = "Connected to signaling server!";
+            console.log("Connected to WebSocket");
+          };
+          
+          ws.onmessage = (event) => {
+            // In the next step, this is where we will receive the video connection data
+            console.log("Received message:", event.data);
+          };
+
+          ws.onerror = (error) => {
+            console.error("WebSocket Error:", error);
+          };
         }
 
         async function handleHost() {
@@ -118,11 +135,11 @@ export default {
           document.getElementById('main-menu').style.display = 'none';
           document.getElementById('waiting-room').style.display = 'block';
           
-          // Start the camera immediately when hosting
           await startLocalVideo();
-          
-          // Tell Cloudflare to create this room in the database
           await fetch('/api/room/' + currentMeetingId, { method: 'POST' });
+          
+          // Connect Host to WebSocket
+          connectSignalingServer(currentMeetingId);
         }
 
         function showJoinUI() {
@@ -146,7 +163,19 @@ export default {
           
           if (response.ok) {
             errorDiv.style.display = 'none';
-            alert("Success! Meeting found. We will connect the video next.");
+            currentMeetingId = enteredId;
+            
+            // Connect Joiner to WebSocket
+            connectSignalingServer(currentMeetingId);
+            
+            // For now, switch to a simple view so they can see the WS status
+            document.getElementById('join-room').style.display = 'none';
+            document.getElementById('waiting-room').style.display = 'block';
+            document.querySelector('#waiting-room h1').innerText = "Joined!";
+            document.querySelector('#waiting-room p').innerText = "You are in the meeting.";
+            document.getElementById('local-video').style.display = 'none'; // Hide video placeholder for joiner UI for now
+            
+            alert("Connected to room! We will add the video linking next.");
           } else {
             errorDiv.style.display = 'block';
           }
