@@ -153,3 +153,4 @@ export default {
     });
   },
 };
+export { MeetingRoom };
