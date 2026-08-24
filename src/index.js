@@ -4,7 +4,6 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // --- BACKEND API ROUTES ---
     if (url.pathname.startsWith("/api/room/")) {
       const meetingId = url.pathname.split("/api/room/")[1];
       const id = env.MEETING_ROOM.idFromName(meetingId);
@@ -12,7 +11,6 @@ export default {
       return room.fetch(request);
     }
 
-    // --- FRONTEND HTML UI ---
     const html = `
     <!DOCTYPE html>
     <html lang="en">
@@ -49,10 +47,10 @@ export default {
           margin: 20px 0; font-size: 24px; font-weight: bold;
           letter-spacing: 3px; color: #1a73e8;
         }
-        .video-placeholder {
-          background: #000; height: 150px; border-radius: 8px;
-          margin-bottom: 20px; display: flex; align-items: center;
-          justify-content: center; color: white; font-size: 14px;
+        /* Video styling */
+        #local-video {
+          width: 100%; height: 200px; border-radius: 8px;
+          margin-bottom: 20px; background: #000; object-fit: cover;
         }
         input {
           width: 100%; padding: 15px; font-size: 18px; border: 2px solid #e0e0e0;
@@ -79,7 +77,10 @@ export default {
         <p>Share this Meeting ID:</p>
         <div class="meeting-id-box" id="host-id">---</div>
         <button class="btn-host" style="margin-bottom: 20px;" onclick="copyId()">Copy Meeting ID</button>
-        <div class="video-placeholder">Your video will appear here</div>
+        
+        <!-- This will now show the live camera feed -->
+        <video id="local-video" autoplay muted playsinline></video>
+        <p style="font-size: 12px; color: #888;">Waiting for others to join...</p>
       </div>
 
       <div class="container" id="join-room">
@@ -93,9 +94,22 @@ export default {
 
       <script>
         let currentMeetingId = null;
+        let localStream; // Will hold the camera/mic data
 
         function generateId() {
           return Math.floor(100000 + Math.random() * 900000);
+        }
+
+        async function startLocalVideo() {
+          try {
+            // Ask the user for camera and microphone permissions
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            const videoElement = document.getElementById('local-video');
+            videoElement.srcObject = localStream;
+          } catch (error) {
+            alert("Could not access camera/microphone. Please allow permissions.");
+            console.error("Error accessing media devices.", error);
+          }
         }
 
         async function handleHost() {
@@ -103,6 +117,9 @@ export default {
           document.getElementById('host-id').innerText = currentMeetingId;
           document.getElementById('main-menu').style.display = 'none';
           document.getElementById('waiting-room').style.display = 'block';
+          
+          // Start the camera immediately when hosting
+          await startLocalVideo();
           
           // Tell Cloudflare to create this room in the database
           await fetch('/api/room/' + currentMeetingId, { method: 'POST' });
@@ -125,14 +142,12 @@ export default {
           
           if (!enteredId) return;
           
-          // Ask Cloudflare if this room exists
           const response = await fetch('/api/room/' + enteredId);
           
           if (response.ok) {
             errorDiv.style.display = 'none';
             alert("Success! Meeting found. We will connect the video next.");
           } else {
-            // If room doesn't exist, show the fake ID error
             errorDiv.style.display = 'block';
           }
         }
@@ -153,5 +168,4 @@ export default {
   },
 };
 
-// This exports the Durable Object for Cloudflare to use
 export { MeetingRoom };
